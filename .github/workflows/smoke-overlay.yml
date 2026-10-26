@@ -29,6 +29,7 @@ jobs:
     steps:
       - name: Run image and wait for backend
         run: |
+          set +e
           docker run -d --name t --network host \
             -e DATABASE_URL=postgresql://postgres:pg@localhost:5432/postiz \
             -e REDIS_URL=redis://localhost:6379 -e JWT_SECRET=smoketestsecret \
@@ -37,25 +38,26 @@ jobs:
             -e BACKEND_INTERNAL_URL=http://localhost:3000 \
             -e IS_GENERAL=true -e NOT_SECURED=true -e RUN_CRON=true \
             -e STORAGE_PROVIDER=local -e UPLOAD_DIRECTORY=/uploads -e NEXT_PUBLIC_UPLOAD_DIRECTORY=/uploads \
-            ${{ matrix.image }} 2>&1); then
-            echo "::error title=docker run failed::$(echo "$runout" | head -c 3000 | sed -z 's/
-/ | /g')"
+            ${{ matrix.image }} > run.out 2>&1
+          rc=$?
+          if [ $rc -ne 0 ]; then
+            msg=$(head -c 3000 run.out | tr '\n' '|')
+            echo "::error title=docker run failed rc=$rc::$msg"
             exit 1
           fi
           up=no
           for i in $(seq 1 40); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/user/self || true)
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/user/self)
             if [ "$code" = "401" ] || [ "$code" = "200" ]; then up=yes; break; fi
             sleep 5
           done
-          echo "backend_up=$up after $((i*5))s"
           {
-            echo "image=${{ matrix.image }} backend_up=$up"
+            echo "image=${{ matrix.image }} backend_up=$up after $((i*5))s"
             docker logs t 2>&1 | grep -v -E 'Mapped|InstanceLoader|RoutesResolver' | tail -40
             echo "--- backend-error.log"
-            docker exec t sh -c 'tail -30 /root/.pm2/logs/backend-error.log 2>&1' || true
-            echo "--- pm2 list"
-            docker exec t sh -c 'pm2 jlist 2>/dev/null | head -c 1500' || true
-          } > out.txt
-          msg=$(sed -z 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g' out.txt | head -c 6000)
+            docker exec t sh -c 'tail -30 /root/.pm2/logs/backend-error.log 2>&1'
+            echo "--- pm2"
+            docker exec t sh -c 'pm2 jlist 2>/dev/null | head -c 1200'
+          } > out.txt 2>&1
+          msg=$(head -c 6000 out.txt | tr '\n' '|')
           echo "::error title=smoke ${{ matrix.image }}::$msg"
