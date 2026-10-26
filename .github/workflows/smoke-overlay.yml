@@ -30,7 +30,7 @@ jobs:
       - name: Run image and wait for backend
         run: |
           set +e
-          docker run -d --name t --network host \
+          docker run -d --name pz --network host \
             -e DATABASE_URL=postgresql://postgres:pg@localhost:5432/postiz \
             -e REDIS_URL=redis://localhost:6379 -e JWT_SECRET=smoketestsecret \
             -e FRONTEND_URL=http://localhost:5000 -e MAIN_URL=http://localhost:5000 \
@@ -53,11 +53,11 @@ jobs:
           done
           {
             echo "image=${{ matrix.image }} backend_up=$up after $((i*5))s"
-            docker logs t 2>&1 | grep -v -E 'Mapped|InstanceLoader|RoutesResolver' | tail -40
+            docker logs pz 2>&1 | grep -v -E 'Mapped|InstanceLoader|RoutesResolver' | tail -40
             echo "--- backend-error.log"
-            docker exec t sh -c 'tail -30 /root/.pm2/logs/backend-error.log 2>&1'
+            docker exec pz sh -c 'tail -30 /root/.pm2/logs/backend-error.log 2>&1'
             echo "--- pm2"
-            docker exec t sh -c 'pm2 jlist 2>/dev/null | head -c 1200'
+            docker exec pz sh -c 'pm2 jlist 2>/dev/null | head -c 1200'
           } > out.txt 2>&1
           msg=$(head -c 6000 out.txt | tr '\n' '|')
           echo "::error title=smoke ${{ matrix.image }}::$msg"
